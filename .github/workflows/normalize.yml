@@ -3,11 +3,11 @@ name: Normalize bank statements
 on:
   push:
     paths:
-      - 'inbox/**'        # запускаем только если были изменения в /inbox
+      - 'inbox/**'
     branches: [ main ]
 
 permissions:
-  contents: write   # нужно, чтобы коммитить / перемещать файлы
+  contents: write
 
 jobs:
   normalize:
@@ -26,12 +26,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Find new/changed files in /inbox for this push
+      - name: Find new files in /inbox for this push
         id: list
         run: |
           echo "files<<EOF" >> $GITHUB_OUTPUT
-          git diff --name-only ${{ github.event.before }} ${{ github.sha }} \
-            | grep '^inbox/' || true >> $GITHUB_OUTPUT
+          git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^inbox/' || true >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Normalize each file
@@ -41,7 +40,6 @@ jobs:
             [ -z "$f" ] && continue
             echo "Processing: $f"
             python normalizer/normalize.py --input "$f" --outdir outbox
-            # Перенос исходника в archive с датой
             base="$(basename "$f")"
             stamp="$(date -u +%Y%m%d_%H%M%S)"
             mkdir -p archive
@@ -56,4 +54,3 @@ jobs:
           git add -A
           git commit -m "Normalize: ${GITHUB_SHA::7}" || echo "Nothing to commit"
           git push
-
