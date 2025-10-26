@@ -1,20 +1,17 @@
 # Bank Statement Normalizer (GitHub-only)
 
-Как пользоваться:
-1) Загрузите выписку (.xlsx или .csv) в папку `/inbox`.
-2) Подождите 10–40 секунд: в `/outbox` появится `normalized_<имя>.csv`, а исходник переедет в `/archive`.
-3) Подключите n8n к `/outbox` (см. ниже).
+## Как пользоваться
+1. Откройте страницу: `https://globalsynergycom.github.io/Bank_Statement/`.
+2. Загрузите выписку (`.xlsx`, `.xls` или `.csv`) через форму — файл попадёт в `/inbox`.
+3. Подождите 10–60 сек: GitHub Actions создаст `outbox/normalized_<file>.csv`, исходник переедет в `/archive/<timestamp>_<file>`.
 
-## n8n
-- **Public repo**: читайте `https://raw.githubusercontent.com/<owner>/<repo>/main/outbox/normalized_*.csv`
-- **Private repo**: используйте GitHub API с PAT:
+## Интеграция с n8n
+- Public repo: читайте `https://raw.githubusercontent.com/globalsynergycom/Bank_Statement/main/outbox/<file>.csv`
+- Private repo: тот же URL + заголовок  
+  `Authorization: Bearer <PAT with repo:contents read>`
 
-  - GET список файлов:  
-    `GET https://api.github.com/repos/<owner>/<repo>/contents/outbox`
-  - Скачать файл (raw):  
-    `GET https://raw.githubusercontent.com/<owner>/<repo>/main/outbox/<file>.csv`  
-    c заголовком `Authorization: Bearer <PAT>`
-
-## Ограничения
-- Файлы в Git лучше до ~25 МБ. Крупные выгрузки → разбить или включить Git LFS.
-- Обработка запускается на push в `/inbox/**`. При необходимости добавьте ручной dispatch.
+## Технические детали
+- Страница формы в `docs/index.html` (GitHub Pages: Settings → Pages → main /docs).
+- Воркер Cloudflare (серверless) принимает файл и кладёт в `/inbox` через GitHub Contents API.
+- Workflow `.github/workflows/normalize.yml` нормализует данные `normalizer/normalize.py`.
+- Ограничение GitHub: файлы до ~25–50 МБ.
