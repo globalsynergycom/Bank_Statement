@@ -3,30 +3,30 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Загрузка банковской выписки → GitHub Inbox</title>
+  <title>Загрузка выписки → GitHub /inbox</title>
   <style>
-    :root{--brand:#0b3d91;--bg:#f7f9fc;--border:#dfe3eb;--text:#111;--muted:#555}
-    body{font-family:Inter,system-ui,Arial,sans-serif;max-width:760px;margin:40px auto;padding:0 12px;color:var(--text)}
+    :root{--brand:#0b3d91;--bg:#f6f8fb;--border:#dfe3eb;--muted:#5b6271}
+    body{font-family:Inter,system-ui,Arial,sans-serif;max-width:760px;margin:40px auto;padding:0 12px}
     h1{color:var(--brand);margin:0 0 14px}
     .card{background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:18px}
-    .btn{display:inline-block;padding:10px 16px;border-radius:10px;border:1px solid var(--brand);background:var(--brand);color:#fff;cursor:pointer}
-    .btn.secondary{background:#fff;color:var(--brand)}
     .row{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+    .btn{padding:10px 16px;border-radius:10px;border:1px solid var(--brand);background:var(--brand);color:#fff;cursor:pointer}
+    .btn.secondary{background:#fff;color:var(--brand)}
     input[type=file]{padding:8px;border:1px solid var(--border);border-radius:10px;width:100%;background:#fff}
     .hint{color:var(--muted);font-size:14px}
     .ok{color:#0b7a2a}.err{color:#b00020}
     .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
-    .links .btn{padding:8px 12px}
-    .drop{border:2px dashed var(--border);border-radius:12px;padding:14px;text-align:center;color:var(--muted)}
+    .drop{border:2px dashed var(--border);border-radius:12px;padding:16px;text-align:center;color:var(--muted)}
     .drop.drag{border-color:var(--brand);color:var(--brand)}
+    .links .btn{padding:8px 12px}
   </style>
 </head>
 <body>
-  <h1>Загрузка выписки → GitHub /inbox</h1>
+  <h1>Загрузка банковской выписки → GitHub /inbox</h1>
 
   <div class="card">
-    <p>Принимаем <b>.xlsx</b>, <b>.xls</b> и <b>.csv</b>. Файл попадёт в папку <code class="mono">/inbox</code>,
-      Action нормализует в формат <code class="mono">date,amount,payer,inn,purpose,receiver</code> и положит результат в <code class="mono">/outbox</code>.</p>
+    <p>Принимаем <b>.xlsx</b>, <b>.xls</b>, <b>.csv</b>. Файл уходит на Cloudflare Worker и сохраняется в репозитории в папку
+      <code class="mono">/inbox</code>. GitHub Actions нормализует и положит результат в <code class="mono">/outbox</code>.</p>
 
     <div class="links row">
       <a id="lkInbox" class="btn secondary" target="_blank">Открыть /inbox</a>
@@ -37,7 +37,7 @@
     <form id="form" onsubmit="return upload(event)">
       <div id="drop" class="drop">Перетащите файл сюда или выберите ниже</div>
       <div class="row">
-        <input id="file" type="file" name="file" accept=".xlsx,.xls,.csv" required>
+        <input id="file" type="file" accept=".xlsx,.xls,.csv" required>
       </div>
       <div class="row">
         <button id="btn" class="btn" type="submit">Загрузить</button>
@@ -46,63 +46,62 @@
       <div id="status" class="hint"></div>
     </form>
 
-    <p class="hint">Ограничение GitHub: файлы до ~25–50 МБ. Крупные выгрузки — разбейте.</p>
+    <p class="hint">Ограничение GitHub: ~25–50 МБ. Для больших выгрузок — разбейте файл.</p>
   </div>
 
   <script>
-    // ⚙️ УКАЖИ СВОЁ:
-    const OWNER = 'globalsynergycom';
-    const REPO  = 'Bank_Statement';
-    const BRANCH = 'main';
-    // ⬇️ ВСТАВЬ URL Cloudflare Worker (пример: https://bank-inbox-api.workers.dev/upload)
-    const UPLOAD_URL = 'https://<YOUR-WORKER>.workers.dev/upload';
+    // ⚙️ НАСТРОЙ НА СЕБЯ ↓↓↓
+    const OWNER   = 'globalsynergycom';
+    const REPO    = 'Bank_Statement';
+    const BRANCH  = 'main';
+    const UPLOAD_URL = 'https://bank-inbox-api.globalsynergycom.workers.dev/upload'; // ← твой воркер
 
-    // Ссылки на репозиторий
+    // Быстрые ссылки на репозиторий
     const base = `https://github.com/${OWNER}/${REPO}`;
     document.getElementById('lkInbox').href  = `${base}/tree/${BRANCH}/inbox`;
     document.getElementById('lkOutbox').href = `${base}/tree/${BRANCH}/outbox`;
     document.getElementById('lkActions').href= `${base}/actions`;
 
-    function resetForm(){ document.getElementById('form').reset(); document.getElementById('status').textContent=''; }
-
-    // drag & drop
+    function resetForm(){ form.reset(); status.textContent=''; }
+    const form = document.getElementById('form');
+    const status = document.getElementById('status');
     const drop = document.getElementById('drop');
+
+    // drag&drop
     drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
     drop.addEventListener('drop', e => {
       e.preventDefault(); drop.classList.remove('drag');
-      const dt = e.dataTransfer; if(dt && dt.files && dt.files[0]) document.getElementById('file').files = dt.files;
+      const f = e.dataTransfer.files?.[0]; if(f) document.getElementById('file').files = e.dataTransfer.files;
     });
 
     async function upload(e){
       e.preventDefault();
       const input = document.getElementById('file');
-      const f = input.files[0];
-      const status = document.getElementById('status');
+      const file = input.files[0];
+      if(!file){ status.textContent='Выберите файл.'; return false; }
+      if(!/\.(xlsx|xls|csv)$/i.test(file.name)){ status.textContent='Только .xlsx, .xls, .csv'; return false; }
+      if(file.size > 50*1024*1024){ status.textContent='Файл >50 МБ. Уменьшите размер.'; return false; }
+
       const btn = document.getElementById('btn');
-
-      if(!f){ status.textContent='Выберите файл.'; return false; }
-      const okExt = /\.(xlsx|xls|csv)$/i.test(f.name);
-      if(!okExt){ status.textContent='Поддерживаются только .xlsx, .xls, .csv'; return false; }
-      if(f.size > 50 * 1024 * 1024){ status.textContent='Файл слишком большой (>50 МБ).'; return false; }
-
-      btn.disabled = true; btn.textContent = 'Отправляем…';
-      status.textContent = 'Загрузка файла в /inbox…';
+      btn.disabled = true; btn.textContent='Отправляем…';
+      status.textContent='Загрузка файла в /inbox…';
 
       try{
-        const fd = new FormData(); fd.append('file', f);
+        const fd = new FormData(); fd.append('file', file);
         const res = await fetch(UPLOAD_URL, { method:'POST', body: fd });
         const data = await res.json().catch(()=>({}));
-        if(!res.ok){ throw new Error(data.error || ('HTTP '+res.status)); }
+        if(!res.ok) throw new Error(data.error || ('HTTP '+res.status));
 
-        status.innerHTML = `✅ Готово. Коммит: <a target="_blank" href="${data.web_url}">${data.path || ''}</a>.
-        Через ~минуту проверьте <a target="_blank" href="${base}/tree/${BRANCH}/outbox">/outbox</a>.`;
-        status.className = 'hint ok';
+        status.innerHTML = `✅ Готово. Файл: <b>${file.name}</b><br>
+          Коммит: <a target="_blank" href="${data.url || data.web_url}">${data.path || 'просмотр на GitHub'}</a><br>
+          Через ~минуту проверьте <a target="_blank" href="${base}/tree/${BRANCH}/outbox">/outbox</a>.`;
+        status.className='hint ok';
       }catch(err){
-        status.textContent = 'Ошибка: ' + err.message;
-        status.className = 'hint err';
+        status.textContent='Ошибка: '+err.message;
+        status.className='hint err';
       }finally{
-        btn.disabled = false; btn.textContent = 'Загрузить';
+        btn.disabled=false; btn.textContent='Загрузить';
       }
       return false;
     }
