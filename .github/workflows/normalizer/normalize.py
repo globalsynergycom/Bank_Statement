@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, re, sys
+import argparse, re
 from pathlib import Path
 import pandas as pd
 
@@ -27,13 +27,10 @@ def detect_header_row(df: pd.DataFrame) -> int:
         row = [str(x or "") for x in df.iloc[i].tolist()]
         score = 0
         for cell in row:
-            low = cell.lower()
             for pat in HEADER_PATTERNS.values():
-                if pat.search(low):
-                    score += 1
-                    break
-        if score > best_score:
-            best_score, best_i = score, i
+                if pat.search(cell.lower()):
+                    score += 1; break
+        if score > best_score: best_score, best_i = score, i
     return best_i
 
 def map_columns(header: list[str]) -> dict:
@@ -41,8 +38,7 @@ def map_columns(header: list[str]) -> dict:
     for idx, name in enumerate(header):
         low = str(name or "").lower().strip()
         for key, pat in HEADER_PATTERNS.items():
-            if pat.search(low):
-                res[key] = idx
+            if pat.search(low): res[key] = idx
     return res
 
 def to_num(x: str):
@@ -55,7 +51,7 @@ def to_num(x: str):
     except: return None
 
 def parse_date(x: str):
-    if x is None or str(x).strip()=="":
+    if not x or str(x).strip()=="":
         return ""
     s = str(x).strip()
     m = re.match(r"^(\d{2})[./](\d{2})[./](\d{4})$", s)
@@ -64,13 +60,11 @@ def parse_date(x: str):
     if m: return s
     try:
         d = pd.to_datetime(s, dayfirst=True, errors="coerce")
-        if pd.isna(d): return ""
-        return d.strftime("%Y-%m-%d")
+        return "" if pd.isna(d) else d.strftime("%Y-%m-%d")
     except:
         return ""
 
 def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
-    # преобразуем в «матрицу» чтобы искать хедер на первых строках
     matrix = pd.DataFrame(df.values)
     header_row = detect_header_row(matrix)
     header = [str(x or "") for x in matrix.iloc[header_row].tolist()]
@@ -95,8 +89,7 @@ def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
         }
         if o["date"] or o["purpose"] or o["amount"]!="":
             out_rows.append(o)
-    out = pd.DataFrame(out_rows, columns=CANON)
-    return out
+    return pd.DataFrame(out_rows, columns=CANON)
 
 def main():
     ap = argparse.ArgumentParser()
@@ -107,12 +100,10 @@ def main():
     src = Path(args.input)
     df = read_any(src)
     out = normalize_df(df)
-    out_dir = Path(args.outdir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"normalized_{src.stem}.csv"
-    out.to_csv(out_path, index=False)
-    print(f"Wrote: {out_path}")
+    out_path = Path(args.outdir); out_path.mkdir(parents=True, exist_ok=True)
+    out_csv = out_path / f"normalized_{src.stem}.csv"
+    out.to_csv(out_csv, index=False)
+    print(f"Wrote: {out_csv}")
 
 if __name__ == "__main__":
-    sys.exit(main())
-
+    main()
