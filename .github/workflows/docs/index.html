@@ -16,14 +16,26 @@
     .hint{color:var(--muted);font-size:14px}
     .ok{color:#0b7a2a}.err{color:#b00020}
     .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+    .links .btn{padding:8px 12px}
+    .drop{border:2px dashed var(--border);border-radius:12px;padding:14px;text-align:center;color:var(--muted)}
+    .drop.drag{border-color:var(--brand);color:var(--brand)}
   </style>
 </head>
 <body>
   <h1>Загрузка выписки → GitHub /inbox</h1>
+
   <div class="card">
-    <p>Принимаем <b>.xlsx</b>, <b>.xls</b> и <b>.csv</b>. Файл попадёт в репозиторий в папку <code class="mono">/inbox</code>, где GitHub Actions его нормализует и сохранит результат в <code class="mono">/outbox</code>.</p>
+    <p>Принимаем <b>.xlsx</b>, <b>.xls</b> и <b>.csv</b>. Файл попадёт в папку <code class="mono">/inbox</code>,
+      Action нормализует в формат <code class="mono">date,amount,payer,inn,purpose,receiver</code> и положит результат в <code class="mono">/outbox</code>.</p>
+
+    <div class="links row">
+      <a id="lkInbox" class="btn secondary" target="_blank">Открыть /inbox</a>
+      <a id="lkOutbox" class="btn secondary" target="_blank">Открыть /outbox</a>
+      <a id="lkActions" class="btn secondary" target="_blank">Показать Actions</a>
+    </div>
 
     <form id="form" onsubmit="return upload(event)">
+      <div id="drop" class="drop">Перетащите файл сюда или выберите ниже</div>
       <div class="row">
         <input id="file" type="file" name="file" accept=".xlsx,.xls,.csv" required>
       </div>
@@ -34,31 +46,60 @@
       <div id="status" class="hint"></div>
     </form>
 
-    <p class="hint">После коммита можно посмотреть результат в папке <code class="mono">/outbox</code> (обычно 10–60 сек).</p>
+    <p class="hint">Ограничение GitHub: файлы до ~25–50 МБ. Крупные выгрузки — разбейте.</p>
   </div>
 
   <script>
-    // 1) Укажите адрес вашего Worker API
-    const UPLOAD_URL = 'https://<ВАШ-WORKER>.workers.dev/upload';
+    // ⚙️ УКАЖИ СВОЁ:
+    const OWNER = 'globalsynergycom';
+    const REPO  = 'Bank_Statement';
+    const BRANCH = 'main';
+    // ⬇️ ВСТАВЬ URL Cloudflare Worker (пример: https://bank-inbox-api.workers.dev/upload)
+    const UPLOAD_URL = 'https://<YOUR-WORKER>.workers.dev/upload';
+
+    // Ссылки на репозиторий
+    const base = `https://github.com/${OWNER}/${REPO}`;
+    document.getElementById('lkInbox').href  = `${base}/tree/${BRANCH}/inbox`;
+    document.getElementById('lkOutbox').href = `${base}/tree/${BRANCH}/outbox`;
+    document.getElementById('lkActions').href= `${base}/actions`;
 
     function resetForm(){ document.getElementById('form').reset(); document.getElementById('status').textContent=''; }
+
+    // drag & drop
+    const drop = document.getElementById('drop');
+    drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag'); });
+    drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+    drop.addEventListener('drop', e => {
+      e.preventDefault(); drop.classList.remove('drag');
+      const dt = e.dataTransfer; if(dt && dt.files && dt.files[0]) document.getElementById('file').files = dt.files;
+    });
+
     async function upload(e){
       e.preventDefault();
-      const f = document.getElementById('file').files[0];
-      if(!f){ return; }
-      const btn = document.getElementById('btn');
+      const input = document.getElementById('file');
+      const f = input.files[0];
       const status = document.getElementById('status');
-      btn.disabled = true; btn.textContent = 'Отправляем…'; status.textContent = 'Загрузка файла…';
+      const btn = document.getElementById('btn');
 
-      const fd = new FormData(); fd.append('file', f);
+      if(!f){ status.textContent='Выберите файл.'; return false; }
+      const okExt = /\.(xlsx|xls|csv)$/i.test(f.name);
+      if(!okExt){ status.textContent='Поддерживаются только .xlsx, .xls, .csv'; return false; }
+      if(f.size > 50 * 1024 * 1024){ status.textContent='Файл слишком большой (>50 МБ).'; return false; }
+
+      btn.disabled = true; btn.textContent = 'Отправляем…';
+      status.textContent = 'Загрузка файла в /inbox…';
+
       try{
+        const fd = new FormData(); fd.append('file', f);
         const res = await fetch(UPLOAD_URL, { method:'POST', body: fd });
-        const data = await res.json();
-        if(!res.ok) throw new Error(data.error || ('HTTP '+res.status));
-        status.innerHTML = `✅ Готово. Коммит: <a target="_blank" href="${data.web_url}">${data.path}</a>`;
+        const data = await res.json().catch(()=>({}));
+        if(!res.ok){ throw new Error(data.error || ('HTTP '+res.status)); }
+
+        status.innerHTML = `✅ Готово. Коммит: <a target="_blank" href="${data.web_url}">${data.path || ''}</a>.
+        Через ~минуту проверьте <a target="_blank" href="${base}/tree/${BRANCH}/outbox">/outbox</a>.`;
         status.className = 'hint ok';
       }catch(err){
-        status.textContent = 'Ошибка: '+ err.message;
+        status.textContent = 'Ошибка: ' + err.message;
         status.className = 'hint err';
       }finally{
         btn.disabled = false; btn.textContent = 'Загрузить';
