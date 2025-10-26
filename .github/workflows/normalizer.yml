@@ -3,19 +3,24 @@ name: Normalize bank statements
 on:
   push:
     branches: [ main ]
-    paths: [ 'inbox/**' ]   # срабатывает только при изменениях в inbox/
-  workflow_dispatch:        # можно запустить вручную из вкладки Actions
+    paths: [ 'inbox/**' ]
+  workflow_dispatch:
 
 permissions:
-  contents: write           # нужно, чтобы коммитить результат
+  contents: write
 
 jobs:
   normalize:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Ensure folders exist
+        run: |
+          mkdir -p outbox archive
+          [ -e outbox/.gitkeep ] || echo > outbox/.gitkeep
+          [ -e archive/.gitkeep ] || echo > archive/.gitkeep
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -27,36 +32,29 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: List new/changed files in inbox
+      - name: List changed files in inbox
         id: changed
         run: |
-          # список новых/изменённых файлов в inbox/ для текущего пуша
           echo "files<<EOF" >> $GITHUB_OUTPUT
-          git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^inbox/' || true >> $GITHUB_OUTPUT
+          git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep '^inbox/' || true >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          echo "Detected files:"
-          cat $GITHUB_OUTPUT || true
 
       - name: Normalize each file
         if: steps.changed.outputs.files != ''
         run: |
-          mkdir -p outbox archive
           while read -r f; do
             [ -f "$f" ] || continue
-            echo "Normalizing: $f"
+            echo "Normalizing $f"
             python .github/workflows/normalizer/normalize.py --input "$f" --outdir outbox
             base="$(basename "$f")"
             stamp="$(date -u +%Y%m%d_%H%M%S)"
-            # переносим оригинал в archive/
-            mkdir -p archive
             git mv "$f" "archive/${stamp}_${base}" || mv "$f" "archive/${stamp}_${base}"
           done <<< "${{ steps.changed.outputs.files }}"
 
-      - name: Commit results
-        if: steps.changed.outputs.files != ''
+      - name: Commit results (and keep folders tracked)
         run: |
-          git config user.name  "github-actions[bot]"
+          git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Normalize statements from inbox → outbox (run $GITHUB_RUN_NUMBER)" || echo "Nothing to commit"
+          git commit -m "Normalize statements / keep outbox+archive" || echo "Nothing to commit"
           git push
